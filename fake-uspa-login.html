@@ -63,7 +63,7 @@
     margin-bottom: 6px;
     margin-top: 16px;
   }
-  input {
+  input[type="text"], input[type="password"] {
     width: 100%;
     padding: 12px 14px;
     border: 1px solid #d8d4cb;
@@ -71,7 +71,7 @@
     font-size: 15px;
     background: white;
   }
-  input:focus {
+  input[type="text"]:focus, input[type="password"]:focus {
     outline: none;
     border-color: var(--orange);
   }
@@ -116,7 +116,7 @@
   <div class="card">
     <span class="badge">Mock / Dev Only</span>
     <h1>USPA Member Login</h1>
-    <p class="sub"><span class="app-name">Jump Box</span> wants to verify your USPA membership.</p>
+    <p class="sub"><span class="app-name">Jump Box</span> wants to verify your USPA licenses and ratings.</p>
 
     <form id="loginForm">
       <label for="email">Email</label>
@@ -138,13 +138,72 @@
   </div>
 
 <script>
-  // Read the redirect_uri your app passed in, e.g.
+  // ---------------------------------------------------------------
+  // Where to send the user back to after "login".
+  // Your app passes this in, e.g.
   // fake-uspa-login.html?redirect_uri=jumpbox://uspa-callback
+  // ---------------------------------------------------------------
   const params = new URLSearchParams(window.location.search);
   const redirectUri = params.get('redirect_uri') || 'jumpbox://uspa-callback';
 
   const VALID_EMAIL = 'test';
   const VALID_PASSWORD = '123';
+
+  // ---------------------------------------------------------------
+  // MEMBER IDENTITY
+  // ---------------------------------------------------------------
+  const MEMBER = {
+    member_id: '123456',
+    name: 'Jane Skydiver',
+    // USPA license number — used to validate signatures on logbook
+    // entries. Stored, but not shown on the profile screen.
+    license_number: '100505'
+  };
+
+  // ---------------------------------------------------------------
+  // LICENSES — permanent once earned, never expire.
+  // Only a date_earned is needed.
+  // ---------------------------------------------------------------
+  const LICENSES = {
+    a: '2019-05-14',
+    b: '2019-08-02',
+    c: '2020-03-21',
+    d: '2021-07-09'
+  };
+
+  // ---------------------------------------------------------------
+  // RATINGS — expire if not renewed. Lose the rating, lose the
+  // privilege. Each needs an expiration so the app can tell the
+  // difference between current and lapsed.
+  // Set expires to a past date to test the "expired" state.
+  // ---------------------------------------------------------------
+  const RATINGS = {
+    pro:             { earned: '2022-04-18', expires: '2027-04-30' },
+    tandem:          { earned: '2021-09-30', expires: '2027-09-30' },
+    aff:             { earned: '2022-01-15', expires: '2027-01-31' },
+    iad:             { earned: '2021-11-06', expires: '2027-11-30' },
+    coach:           { earned: '2020-06-12', expires: '2027-06-30' },
+    tandem_examiner: { earned: '2024-02-20', expires: '2027-02-28' },
+    aff_examiner:    { earned: '2024-05-08', expires: '2027-05-31' },
+    iad_examiner:    { earned: '2023-10-17', expires: '2027-10-31' },
+    coach_examiner:  { earned: '2023-03-25', expires: '2027-03-31' }
+  };
+
+  // Work out whether a rating is still current, based on today's date.
+  function ratingStatus(expires) {
+    const today = new Date();
+    const expiryDate = new Date(expires + 'T23:59:59');
+    return expiryDate >= today ? 'current' : 'expired';
+  }
+
+  // Highest license held (D beats C beats B beats A).
+  function highestLicense(licenses) {
+    const order = ['d', 'c', 'b', 'a'];
+    for (let i = 0; i < order.length; i++) {
+      if (licenses[order[i]]) return order[i].toUpperCase();
+    }
+    return null;
+  }
 
   document.getElementById('loginForm').addEventListener('submit', function (e) {
     e.preventDefault();
@@ -168,25 +227,36 @@
     emailInput.classList.remove('invalid');
     passwordInput.classList.remove('invalid');
 
-    // Build a fake but realistic "verified member" payload.
+    // Fake access token, as a real OAuth provider would issue.
     const fakeToken = 'mock_' + Math.random().toString(36).slice(2, 12);
-    const fakeMemberId = '123456';
-    const fakeName = 'Jane Skydiver';
-    const fakeLicense = 'C';
-    const fakeExpiration = '2027-06-30';
 
     const callback = new URL(redirectUri);
-    callback.searchParams.set('member_id', fakeMemberId);
-    callback.searchParams.set('name', fakeName);
-    callback.searchParams.set('license_type', fakeLicense);
-    callback.searchParams.set('expiration', fakeExpiration);
     callback.searchParams.set('token', fakeToken);
     callback.searchParams.set('status', 'verified');
 
-    // This is the redirect that expo-web-browser catches.
+    // Identity fields
+    Object.keys(MEMBER).forEach(function (key) {
+      callback.searchParams.set(key, MEMBER[key]);
+    });
+
+    // Licenses: license_a_earned, license_b_earned, ...
+    Object.keys(LICENSES).forEach(function (key) {
+      callback.searchParams.set('license_' + key + '_earned', LICENSES[key]);
+    });
+    callback.searchParams.set('highest_license', highestLicense(LICENSES));
+
+    // Ratings: rating_tandem_earned, rating_tandem_expires,
+    //          rating_tandem_status, ...
+    Object.keys(RATINGS).forEach(function (key) {
+      const r = RATINGS[key];
+      callback.searchParams.set('rating_' + key + '_earned', r.earned);
+      callback.searchParams.set('rating_' + key + '_expires', r.expires);
+      callback.searchParams.set('rating_' + key + '_status', ratingStatus(r.expires));
+    });
+
+    // This is the redirect your app catches.
     window.location.href = callback.toString();
   });
 </script>
 </body>
 </html>
- 'add mock uspa login'
